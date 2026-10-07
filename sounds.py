@@ -42,14 +42,14 @@ def _to_sound(arr) -> pygame.Sound:
     """
     Convert a 1-D int16 numpy array to a pygame Sound.
 
-    Falls back to a 2-D (n, 1) reshape if the mixer was initialised for
-    a different channel configuration.
+    pygame-ce initialises the mixer as stereo (2 channels) regardless of the
+    pre_init channel argument, so make_sound always needs a (n_samples, 2)
+    array.  We duplicate the mono signal into both channels.
     """
     arr = np.ascontiguousarray(arr, dtype=np.int16)
-    try:
-        return pygame.sndarray.make_sound(arr)
-    except Exception:
-        return pygame.sndarray.make_sound(arr.reshape(-1, 1))
+    # Always produce stereo — duplicate mono into left + right channels
+    stereo = np.column_stack([arr, arr])
+    return pygame.sndarray.make_sound(stereo)
 
 
 def _sweep_sound(freq_start: float, freq_end: float, duration: float,
