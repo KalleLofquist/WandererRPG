@@ -1,7 +1,7 @@
 # combat.py — Resolves combat between player and enemies each frame.
 
 from typing import List
-from settings import PLAYER_ATTACK_DAMAGE, ENEMY_DAMAGE
+from settings import PLAYER_ATTACK_DAMAGE
 
 
 def resolve_combat(player, enemies: List) -> List:
@@ -34,9 +34,10 @@ def resolve_combat(player, enemies: List) -> List:
                     newly_dead.append(enemy)
 
     # --- Enemies attacking player ---
+    # Each enemy uses its own .damage attribute so dungeon enemies hit harder.
     for enemy in enemies:
         if enemy.can_attack_player(player.rect):
             enemy.do_attack()
-            player.take_damage(ENEMY_DAMAGE)
+            player.take_damage(enemy.damage)
 
     return newly_dead

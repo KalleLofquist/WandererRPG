@@ -119,6 +119,12 @@ class Player:
             self.is_attacking          = True
             self.attack_timer          = PLAYER_ATTACK_DURATION
             self.attack_cooldown_timer = PLAYER_ATTACK_COOLDOWN
+            # Play swing SFX (lazy import avoids circular dependency at module load)
+            try:
+                import sounds
+                sounds.play_swing()
+            except Exception:
+                pass
 
     def get_attack_rect(self) -> pygame.Rect:
         """
@@ -145,6 +151,12 @@ class Player:
         if self.invincibility_timer == 0:
             self.hp = max(0, self.hp - amount)
             self.invincibility_timer = PLAYER_INVINCIBILITY_FRAMES
+            # Play hurt SFX (lazy import avoids circular dependency at module load)
+            try:
+                import sounds
+                sounds.play_hit_player()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #

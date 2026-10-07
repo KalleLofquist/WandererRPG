@@ -44,3 +44,32 @@ ENEMY_HIT_COLOR      = (255, 255, 255)   # flash white on hit
 HUD_HP_BAR_COLOR     = (200,  50,  50)   # health bar fill
 HUD_HP_BAR_BG_COLOR  = (80,   20,  20)   # health bar background
 HUD_HP_TEXT_COLOR    = (255, 255, 255)
+
+# --- Map IDs ---
+MAP_ID_TOWN    = 'town'
+MAP_ID_DUNGEON = 'dungeon'
+
+# --- Tile types (additional) ---
+TILE_EXIT = 2   # walkable, triggers map transition
+
+# --- NPC ---
+NPC_INTERACT_RADIUS = 48   # px
+NPC_COLOR           = (80, 180, 80)    # friendly green
+NPC_INDICATOR_COLOR = (255, 230, 50)   # yellow "!" above NPC
+
+# --- Items ---
+POTION_HEAL_AMOUNT  = 30
+POTION_COLOR        = (60, 200, 100)   # bright green
+POTION_PULSE_FRAMES = 40               # frames per full pulse cycle
+
+# --- Dungeon enemy (slightly harder) ---
+DUNGEON_ENEMY_HP     = 80
+DUNGEON_ENEMY_DAMAGE = 15
+DUNGEON_ENEMY_SPEED  = 2.0
+
+# --- Dungeon / dialogue colors ---
+DUNGEON_WALL_COLOR    = (50,  40,  70)        # dark purple-grey
+DUNGEON_FLOOR_COLOR   = (35,  30,  50)        # very dark purple
+DIALOGUE_BG_COLOR     = (10,  10,  30, 200)   # semi-transparent dark blue (RGBA)
+DIALOGUE_TEXT_COLOR   = (220, 220, 255)
+DIALOGUE_BORDER_COLOR = (100, 100, 180)

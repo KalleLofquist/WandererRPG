@@ -4,7 +4,7 @@ import math
 import pygame
 from settings import (
     TILE_SIZE, PLAYER_SIZE,
-    ENEMY_MAX_HP, ENEMY_SPEED,
+    ENEMY_MAX_HP, ENEMY_SPEED, ENEMY_DAMAGE,
     ENEMY_DETECT_RADIUS, ENEMY_LOSE_RADIUS,
     ENEMY_ATTACK_RANGE, ENEMY_ATTACK_COOLDOWN,
     ENEMY_COLOR, ENEMY_HIT_COLOR,
@@ -45,12 +45,18 @@ class Enemy:
         y: float,
         patrol_start: tuple,
         patrol_end: tuple,
+        hp: int   = None,
+        speed: float = None,
+        damage: int  = None,
     ):
         """
         Args:
             x, y:          World-pixel spawn position (top-left of bounding box).
             patrol_start:  (tile_col, tile_row) of the first patrol waypoint.
             patrol_end:    (tile_col, tile_row) of the second patrol waypoint.
+            hp:            Override max HP (defaults to ENEMY_MAX_HP).
+            speed:         Override movement speed (defaults to ENEMY_SPEED).
+            damage:        Override melee damage (defaults to ENEMY_DAMAGE).
         """
         self._x: float = float(x)
         self._y: float = float(y)
@@ -69,9 +75,13 @@ class Enemy:
         # State machine
         self.state: str = STATE_PATROL
 
-        # Combat
-        self.hp: int               = ENEMY_MAX_HP
-        self.max_hp: int           = ENEMY_MAX_HP
+        # Stats — support per-instance overrides for dungeon / boss variants
+        _hp            = hp     if hp     is not None else ENEMY_MAX_HP
+        self.hp: int   = _hp
+        self.max_hp: int = _hp
+        self._speed: float  = speed  if speed  is not None else ENEMY_SPEED
+        self.damage: int    = damage if damage is not None else ENEMY_DAMAGE
+
         self.attack_cooldown_timer: int = 0
         self._hit_flash_timer: int = 0  # counts down for the white-flash effect
 
@@ -122,9 +132,9 @@ class Enemy:
         if dist == 0:
             return False
 
-        # Normalise and scale to ENEMY_SPEED
-        step_x = (dx / dist) * ENEMY_SPEED
-        step_y = (dy / dist) * ENEMY_SPEED
+        # Normalise and scale to this enemy's movement speed
+        step_x = (dx / dist) * self._speed
+        step_y = (dy / dist) * self._speed
 
         moved = False
 
@@ -231,6 +241,12 @@ class Enemy:
         """Reduce HP (floored at 0) and trigger the white-flash effect."""
         self.hp = max(0, self.hp - amount)
         self._hit_flash_timer = 8
+        # Play hit SFX (lazy import avoids circular dependency at module load)
+        try:
+            import sounds
+            sounds.play_hit_enemy()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ #
     #  Rendering                                                           #
