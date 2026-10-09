@@ -97,6 +97,36 @@ class NPC:
     #  Public API                                                          #
     # ------------------------------------------------------------------ #
 
+    def set_quest(self, quest) -> None:
+        """Wire a DungeonClearQuest to this NPC so dialogue adapts to quest state."""
+        self._quest = quest
+
+    def _get_dynamic_lines(self) -> list:
+        """Return the appropriate dialogue list based on current quest state."""
+        q = getattr(self, '_quest', None)
+        if q is None or q.state == 'inactive':
+            return [
+                "Welcome, wanderer. These lands grow dangerous.",
+                "Dark creatures stir beneath the old keep to the south.",
+                "Slay 4 of the beasts and return to me. I shall reward your bravery.",
+            ]
+        elif q.state == 'active':
+            return [
+                f"How goes the hunt? You have slain {q.kills_current} of {q.kills_needed}.",
+                "The entrance is through the southern passage. Stay sharp.",
+            ]
+        elif q.state == 'complete':
+            return [
+                "You've done it! The dungeon is cleared of its foul inhabitants.",
+                "Take this reward — you have earned it.",
+            ]
+        elif q.state == 'rewarded':
+            return [
+                "Well done, wanderer. The keep is safer for your courage.",
+                "Rest here a while if you need. You are always welcome.",
+            ]
+        return ["..."]
+
     def is_in_range(self, player_rect: pygame.Rect) -> bool:
         """Return True if the player's centre is within NPC_INTERACT_RADIUS."""
         dx = self.rect.centerx - player_rect.centerx
@@ -107,20 +137,27 @@ class NPC:
         """Refresh indicator visibility — call once per frame."""
         self._show_indicator = self.is_in_range(player_rect)
 
-    def interact(self) -> None:
+    def interact(self, player=None) -> None:
         """
         Called when the player presses E near this NPC.
 
-        First call  : opens the dialogue at line 0.
+        First call  : opens the dialogue at line 0 (rebuilds lines from quest state).
         Subsequent  : advances to the next line.
-        After last  : wraps back to line 0 and closes the dialogue box.
+        After last  : closes; triggers quest accept or reward as appropriate.
+
+        Args:
+            player: Player instance — required to grant the quest reward.
         """
-        # Lazy import to avoid circular dependency with sounds
         try:
             import sounds
             sounds.play_dialogue()
         except Exception:
             pass
+
+        # Rebuild lines based on current quest state each time interact is called
+        self._dialogue_lines = self._get_dynamic_lines()
+
+        q = getattr(self, '_quest', None)
 
         if not self.is_talking:
             self.is_talking  = True
@@ -130,6 +167,12 @@ class NPC:
             if self._line_index >= len(self._dialogue_lines):
                 self._line_index = 0
                 self.is_talking  = False
+                # Accept quest when closing the first (inactive) conversation
+                if q is not None and q.state == 'inactive':
+                    q.accept()
+                # Collect reward when closing the 'complete' conversation
+                elif q is not None and q.state == 'complete' and player is not None:
+                    q.collect_reward(player)
 
     def close_dialogue(self) -> None:
         """Close the dialogue box immediately (Q key)."""

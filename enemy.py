@@ -9,6 +9,7 @@ from settings import (
     ENEMY_ATTACK_RANGE, ENEMY_ATTACK_COOLDOWN,
     ENEMY_COLOR, ENEMY_HIT_COLOR,
     HUD_HP_BAR_BG_COLOR, WHITE,
+    ENEMY_XP_VALUE, ENEMY_KNOCKBACK_FORCE, ENEMY_KNOCKBACK_FRICTION,
 )
 
 # Enemy size matches the player for consistent collision feel
@@ -45,9 +46,10 @@ class Enemy:
         y: float,
         patrol_start: tuple,
         patrol_end: tuple,
-        hp: int   = None,
-        speed: float = None,
-        damage: int  = None,
+        hp: int        = None,
+        speed: float   = None,
+        damage: int    = None,
+        xp_value: int  = None,
     ):
         """
         Args:
@@ -57,6 +59,7 @@ class Enemy:
             hp:            Override max HP (defaults to ENEMY_MAX_HP).
             speed:         Override movement speed (defaults to ENEMY_SPEED).
             damage:        Override melee damage (defaults to ENEMY_DAMAGE).
+            xp_value:      Override XP reward on death (defaults to ENEMY_XP_VALUE).
         """
         self._x: float = float(x)
         self._y: float = float(y)
@@ -76,14 +79,19 @@ class Enemy:
         self.state: str = STATE_PATROL
 
         # Stats — support per-instance overrides for dungeon / boss variants
-        _hp            = hp     if hp     is not None else ENEMY_MAX_HP
-        self.hp: int   = _hp
+        _hp              = hp     if hp     is not None else ENEMY_MAX_HP
+        self.hp: int     = _hp
         self.max_hp: int = _hp
         self._speed: float  = speed  if speed  is not None else ENEMY_SPEED
         self.damage: int    = damage if damage is not None else ENEMY_DAMAGE
+        self.xp_value: int  = xp_value if xp_value is not None else ENEMY_XP_VALUE
 
         self.attack_cooldown_timer: int = 0
         self._hit_flash_timer: int = 0  # counts down for the white-flash effect
+
+        # --- Knockback ---
+        self.knockback_vx: float = 0.0
+        self.knockback_vy: float = 0.0
 
     # ------------------------------------------------------------------ #
     #  Properties                                                          #
@@ -176,6 +184,21 @@ class Enemy:
         if self._hit_flash_timer > 0:
             self._hit_flash_timer -= 1
 
+        # --- Apply knockback (before AI movement) ---
+        if abs(self.knockback_vx) > 0.5 or abs(self.knockback_vy) > 0.5:
+            new_x = self._x + self.knockback_vx
+            if self._corners_clear(new_x, self._y, tilemap):
+                self._x = new_x
+            else:
+                self.knockback_vx = 0.0
+            new_y = self._y + self.knockback_vy
+            if self._corners_clear(self._x, new_y, tilemap):
+                self._y = new_y
+            else:
+                self.knockback_vy = 0.0
+            self.knockback_vx *= ENEMY_KNOCKBACK_FRICTION
+            self.knockback_vy *= ENEMY_KNOCKBACK_FRICTION
+
         # --- Distance to player ---
         px = player_rect.centerx
         py = player_rect.centery
@@ -247,6 +270,17 @@ class Enemy:
             sounds.play_hit_enemy()
         except Exception:
             pass
+
+    def apply_knockback(self, from_x: float, from_y: float):
+        """Apply knockback away from (from_x, from_y)."""
+        dx = self.rect.centerx - from_x
+        dy = self.rect.centery - from_y
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            dx, dy = 0.0, 1.0
+            dist = 1.0
+        self.knockback_vx = (dx / dist) * ENEMY_KNOCKBACK_FORCE
+        self.knockback_vy = (dy / dist) * ENEMY_KNOCKBACK_FORCE
 
     # ------------------------------------------------------------------ #
     #  Rendering                                                           #

@@ -9,6 +9,8 @@ from settings import (
     BLACK,
     MAP_ID_TOWN, MAP_ID_DUNGEON,
     DUNGEON_ENEMY_HP, DUNGEON_ENEMY_DAMAGE, DUNGEON_ENEMY_SPEED,
+    DUNGEON_ENEMY_XP_VALUE,
+    GAME_STATE_PLAYING, GAME_STATE_GAME_OVER,
 )
 from tilemap import (
     TileMap, TILE_FLOOR, TILE_WALL, TILE_EXIT,
@@ -22,6 +24,7 @@ from hud     import draw_hud
 from maps    import build_town_map, build_dungeon_map
 from npc     import NPC
 from item    import HealthPotion
+from quest   import DungeonClearQuest
 
 
 # ------------------------------------------------------------------ #
@@ -58,6 +61,7 @@ def load_map(map_id: str, player: Player):
         e_hp     = DUNGEON_ENEMY_HP
         e_speed  = DUNGEON_ENEMY_SPEED
         e_damage = DUNGEON_ENEMY_DAMAGE
+        e_xp     = DUNGEON_ENEMY_XP_VALUE
     else:
         data = build_town_map()
         set_town_theme()
@@ -65,6 +69,7 @@ def load_map(map_id: str, player: Player):
         e_hp     = None   # use enemy defaults
         e_speed  = None
         e_damage = None
+        e_xp     = None   # use default ENEMY_XP_VALUE
 
     # ---- TileMap -----------------------------------------------------
     tilemap = TileMap(data['grid'])
@@ -84,6 +89,7 @@ def load_map(map_id: str, player: Player):
             hp=e_hp,
             speed=e_speed,
             damage=e_damage,
+            xp_value=e_xp,
         ))
 
     # ---- NPCs -------------------------------------------------------
@@ -105,29 +111,24 @@ def load_map(map_id: str, player: Player):
     return tilemap, enemies, npcs, items, camera, data['exit_tiles']
 
 
+def _wire_quest(npcs, quest):
+    """Attach the quest to the Elder NPC (if present) in the given NPC list."""
+    for npc in npcs:
+        if npc.name == 'Elder':
+            npc.set_quest(quest)
+
+
 def do_fade(screen: pygame.Surface, clock: pygame.time.Clock,
             fade_in: bool = True, duration_frames: int = 30) -> None:
     """
     Blocking screen-transition fade.
 
-    Captures what is currently on *screen*, then overlays a black surface
-    whose alpha changes over *duration_frames* frames.
-
     fade_in=False : alpha  0 → 255  (fades to black)
     fade_in=True  : alpha 255 → 0   (reveals the snapshot)
-
-    Callers should ensure that the desired end-state image is already
-    rendered to *screen* before calling with fade_in=True.
-
-    Args:
-        screen:          The pygame display surface.
-        clock:           The game clock (used for frame-rate limiting).
-        fade_in:         Direction of the fade.
-        duration_frames: How many frames the transition lasts.
     """
     black    = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
     black.fill(BLACK)
-    snapshot = screen.copy()   # preserve whatever was rendered before the call
+    snapshot = screen.copy()
 
     for i in range(duration_frames + 1):
         if fade_in:
@@ -136,15 +137,12 @@ def do_fade(screen: pygame.Surface, clock: pygame.time.Clock,
             alpha = int(255 * (i / duration_frames))
         alpha = max(0, min(255, alpha))
 
-        # Restore snapshot, then overlay the semi-opaque black
         screen.blit(snapshot, (0, 0))
         black.set_alpha(alpha)
         screen.blit(black, (0, 0))
         pygame.display.flip()
         clock.tick(FPS)
 
-        # Process minimal events during the fade so the OS doesn't think
-        # the window has frozen
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -152,7 +150,7 @@ def do_fade(screen: pygame.Surface, clock: pygame.time.Clock,
 
 
 def _render_world(screen, tilemap, items, enemies, npcs, player, camera,
-                  hud_player, frame_counter):
+                  hud_player, frame_counter, quest=None):
     """
     Draw a single complete frame: tilemap → items → enemies → NPCs → player → HUD.
     Does NOT call pygame.display.flip().
@@ -170,7 +168,7 @@ def _render_world(screen, tilemap, items, enemies, npcs, player, camera,
         npc.draw(screen, camera)
 
     hud_player.draw(screen, camera)
-    draw_hud(screen, hud_player)
+    draw_hud(screen, hud_player, quest=quest)
 
 
 # ------------------------------------------------------------------ #
@@ -178,8 +176,7 @@ def _render_world(screen, tilemap, items, enemies, npcs, player, camera,
 # ------------------------------------------------------------------ #
 
 def main():
-    # Pre-initialise the mixer BEFORE pygame.init() so our sample-rate /
-    # bit-depth / channel settings are respected by the driver.
+    # Pre-initialise the mixer BEFORE pygame.init()
     pygame.mixer.pre_init(44100, -16, 1, 512)
     pygame.init()
     sounds.init()   # generate all procedural audio assets
@@ -188,13 +185,16 @@ def main():
     clock  = pygame.time.Clock()
 
     # ---- Initial world setup ----------------------------------------
+    game_state     = GAME_STATE_PLAYING
     current_map_id = MAP_ID_TOWN
+    quest          = DungeonClearQuest()
 
     # Create player at a temporary position; load_map will set the real spawn.
     player = Player(0, 0)
 
     tilemap, enemies, npcs, items, camera, exit_tiles = load_map(current_map_id, player)
     camera.update(player.rect)   # prime the camera
+    _wire_quest(npcs, quest)
 
     # ---- State variables --------------------------------------------
     frame_counter       = 0
@@ -216,107 +216,138 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
 
-                # Single-press attack
-                elif event.key in (pygame.K_SPACE, pygame.K_f):
-                    player.try_attack()
+                # --- Restart from game-over screen ---
+                elif event.key == pygame.K_r and game_state == GAME_STATE_GAME_OVER:
+                    game_state     = GAME_STATE_PLAYING
+                    quest          = DungeonClearQuest()
+                    player         = Player(0, 0)
+                    current_map_id = MAP_ID_TOWN
+                    tilemap, enemies, npcs, items, camera, exit_tiles = \
+                        load_map(current_map_id, player)
+                    camera.update(player.rect)
+                    transition_cooldown = 0
+                    _wire_quest(npcs, quest)
+                    do_fade(screen, clock, fade_in=True, duration_frames=20)
 
-                # NPC interaction — E key
-                elif event.key == pygame.K_e:
-                    # Find the nearest in-range NPC that is either already
-                    # talking (advance) or ready to start
-                    for npc in npcs:
-                        if npc.is_talking:
-                            npc.interact()   # advance or close
-                            break
-                        elif npc.is_in_range(player.rect):
-                            npc.interact()   # start dialogue
-                            break
+                # Only process gameplay keys when playing
+                elif game_state == GAME_STATE_PLAYING:
 
-                # Close dialogue — Q key
-                elif event.key == pygame.K_q:
-                    for npc in npcs:
-                        if npc.is_talking:
-                            npc.close_dialogue()
-                            break
+                    # Single-press attack
+                    if event.key in (pygame.K_SPACE, pygame.K_f):
+                        player.try_attack()
 
-        # ---- Update -------------------------------------------------
-        keys = pygame.key.get_pressed()
-        player.handle_input(keys, tilemap)
-        camera.update(player.rect)
+                    # NPC interaction — E key
+                    elif event.key == pygame.K_e:
+                        for npc in npcs:
+                            if npc.is_talking:
+                                npc.interact(player=player)   # advance or close
+                                break
+                            elif npc.is_in_range(player.rect):
+                                npc.interact(player=player)   # start dialogue
+                                break
 
-        # NPC proximity check (drives "!" indicator)
-        for npc in npcs:
-            npc.update(player.rect)
+                    # Close dialogue — Q key
+                    elif event.key == pygame.K_q:
+                        for npc in npcs:
+                            if npc.is_talking:
+                                npc.close_dialogue()
+                                break
 
-        # Enemies
-        for enemy in enemies:
-            enemy.update(player.rect, tilemap)
+        # ---- Update (only when playing) ----------------------------
+        if game_state == GAME_STATE_PLAYING:
+            keys = pygame.key.get_pressed()
+            player.handle_input(keys, tilemap)
+            camera.update(player.rect)
 
-        # Combat
-        dead_enemies = resolve_combat(player, enemies)
-        for dead in dead_enemies:
-            if dead in enemies:
-                enemies.remove(dead)
+            # NPC proximity check (drives "!" indicator)
+            for npc in npcs:
+                npc.update(player.rect)
 
-        # Item pickup — iterate a copy so we can remove safely
-        for item in list(items):
-            if player.rect.colliderect(item.rect):
-                if item.on_pickup(player):
-                    items.remove(item)
+            # Enemies
+            for enemy in enemies:
+                enemy.update(player.rect, tilemap)
 
-        # Player death
-        if player.is_dead:
-            print("Game Over — the player has fallen.")
-            running = False
+            # Combat — pass quest and map ID for XP/quest routing
+            dead_enemies = resolve_combat(
+                player, enemies,
+                quest=quest, current_map_id=current_map_id,
+            )
+            for dead in dead_enemies:
+                if dead in enemies:
+                    enemies.remove(dead)
 
-        # ---- Map transition check -----------------------------------
-        if transition_cooldown > 0:
-            transition_cooldown -= 1
-        else:
-            # Find which exit tile (if any) the player's centre is on
-            centre_col = player.rect.centerx // TILE_SIZE
-            centre_row = player.rect.centery // TILE_SIZE
-            triggered_exit = None
-            for ex in exit_tiles:
-                if ex['col'] == centre_col and ex['row'] == centre_row:
-                    triggered_exit = ex
-                    break
+            # Item pickup
+            for item in list(items):
+                if player.rect.colliderect(item.rect):
+                    if item.on_pickup(player):
+                        items.remove(item)
 
-            if triggered_exit is not None:
-                # ---- Transition sequence ----------------------------
-                # 1. Render last frame of old map and fade to black
-                _render_world(screen, tilemap, items, enemies, npcs,
-                              player, camera, player, frame_counter)
-                pygame.display.flip()
-                do_fade(screen, clock, fade_in=False, duration_frames=30)
+            # Player death → game over
+            if player.is_dead:
+                game_state = GAME_STATE_GAME_OVER
 
-                # 2. Load new map (repositions player, switches music)
-                current_map_id = triggered_exit['target']
-                tilemap, enemies, npcs, items, camera, exit_tiles = \
-                    load_map(current_map_id, player)
-                camera.update(player.rect)
+            # ---- Map transition check --------------------------------
+            if transition_cooldown > 0:
+                transition_cooldown -= 1
+            else:
+                centre_col = player.rect.centerx // TILE_SIZE
+                centre_row = player.rect.centery // TILE_SIZE
+                triggered_exit = None
+                for ex in exit_tiles:
+                    if ex['col'] == centre_col and ex['row'] == centre_row:
+                        triggered_exit = ex
+                        break
 
-                # 3. Render first frame of new map so fade_in has something
-                #    to reveal
-                _render_world(screen, tilemap, items, enemies, npcs,
-                              player, camera, player, frame_counter)
-                pygame.display.flip()
+                if triggered_exit is not None:
+                    # 1. Render last frame of old map and fade to black
+                    _render_world(screen, tilemap, items, enemies, npcs,
+                                  player, camera, player, frame_counter, quest=quest)
+                    pygame.display.flip()
+                    do_fade(screen, clock, fade_in=False, duration_frames=30)
 
-                # 4. Fade from black to the new map
-                do_fade(screen, clock, fade_in=True, duration_frames=30)
+                    # 2. Load new map (repositions player, switches music)
+                    current_map_id = triggered_exit['target']
+                    tilemap, enemies, npcs, items, camera, exit_tiles = \
+                        load_map(current_map_id, player)
+                    camera.update(player.rect)
 
-                # Prevent immediately re-triggering the exit on the new map
-                transition_cooldown = 90   # ~1.5 s at 60 FPS
+                    # Re-wire quest to Elder NPC on every map load
+                    _wire_quest(npcs, quest)
+
+                    # 3. Render first frame of new map so fade_in has something to reveal
+                    _render_world(screen, tilemap, items, enemies, npcs,
+                                  player, camera, player, frame_counter, quest=quest)
+                    pygame.display.flip()
+
+                    # 4. Fade from black to the new map
+                    do_fade(screen, clock, fade_in=True, duration_frames=30)
+
+                    transition_cooldown = 90   # ~1.5 s at 60 FPS
 
         # ---- Draw ---------------------------------------------------
         _render_world(screen, tilemap, items, enemies, npcs,
-                      player, camera, player, frame_counter)
+                      player, camera, player, frame_counter, quest=quest)
 
         # Dialogue boxes rendered on top of everything else (screen space)
         for npc in npcs:
             if npc.is_talking:
                 npc.draw_dialogue(screen)
                 break   # only one dialogue box at a time
+
+        # ---- Game Over overlay (drawn over everything) ---------------
+        if game_state == GAME_STATE_GAME_OVER:
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay.fill((80, 0, 0, 180))
+            screen.blit(overlay, (0, 0))
+
+            font_big   = pygame.font.SysFont('arial', 64, bold=True)
+            font_small = pygame.font.SysFont('arial', 24)
+
+            title = font_big.render('YOU DIED', True, (220, 50, 50))
+            hint  = font_small.render('[ R ] Restart   |   [ ESC ] Quit', True, (200, 200, 200))
+
+            screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+            screen.blit(hint,  hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40)))
 
         pygame.display.flip()
 

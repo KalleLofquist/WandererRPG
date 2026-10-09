@@ -73,3 +73,32 @@ DUNGEON_FLOOR_COLOR   = (35,  30,  50)        # very dark purple
 DIALOGUE_BG_COLOR     = (10,  10,  30, 200)   # semi-transparent dark blue (RGBA)
 DIALOGUE_TEXT_COLOR   = (220, 220, 255)
 DIALOGUE_BORDER_COLOR = (100, 100, 180)
+
+# --- Knockback ---
+PLAYER_KNOCKBACK_FORCE    = 8      # initial px/frame
+PLAYER_KNOCKBACK_FRICTION = 0.75   # multiplied each frame
+ENEMY_KNOCKBACK_FORCE     = 10
+ENEMY_KNOCKBACK_FRICTION  = 0.78
+
+# --- XP & Leveling ---
+PLAYER_BASE_XP_PER_LEVEL  = 100    # XP needed for level 2
+PLAYER_XP_SCALE           = 1.4    # each level costs 40% more XP
+PLAYER_HP_PER_LEVEL       = 15     # max HP gained per level
+PLAYER_ATTACK_PER_LEVEL   = 5      # attack damage gained per level
+LEVEL_UP_FLASH_DURATION   = 60     # frames for the level-up visual
+
+# --- Enemy XP rewards ---
+ENEMY_XP_VALUE         = 20
+DUNGEON_ENEMY_XP_VALUE = 35
+
+# --- Quest ---
+DUNGEON_KILL_QUEST_TARGET = 4   # number of dungeon enemies to slay
+
+# --- HUD additions ---
+HUD_XP_BAR_COLOR    = (100,  80, 200)   # purple
+HUD_XP_BAR_BG_COLOR = (30,   20,  60)
+HUD_LEVEL_UP_COLOR  = (255, 220,  50)   # gold
+
+# --- Game states ---
+GAME_STATE_PLAYING   = 'playing'
+GAME_STATE_GAME_OVER = 'game_over'

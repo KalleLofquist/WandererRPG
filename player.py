@@ -1,11 +1,17 @@
-# player.py — Player entity: movement, collision, combat, and rendering.
+# player.py — Player entity: movement, collision, combat, rendering, XP/leveling, knockback.
 
+import math
 import pygame
 from settings import (
     PLAYER_SPEED, PLAYER_SIZE, PLAYER_COLOR, TILE_SIZE,
     PLAYER_MAX_HP, PLAYER_ATTACK_DAMAGE, PLAYER_ATTACK_RANGE,
     PLAYER_ATTACK_DURATION, PLAYER_ATTACK_COOLDOWN,
     PLAYER_INVINCIBILITY_FRAMES,
+    PLAYER_HP_PER_LEVEL, PLAYER_ATTACK_PER_LEVEL,
+    PLAYER_BASE_XP_PER_LEVEL, PLAYER_XP_SCALE,
+    LEVEL_UP_FLASH_DURATION,
+    PLAYER_KNOCKBACK_FORCE, PLAYER_KNOCKBACK_FRICTION,
+    HUD_LEVEL_UP_COLOR,
 )
 
 # A slightly darker shade for the directional arrow
@@ -24,6 +30,7 @@ class Player:
     four corners, and only move if every corner lands on a floor tile.
 
     Phase 2 additions: HP, attack system, invincibility frames.
+    Phase 4 additions: XP/leveling, knockback, level-up flash.
     """
 
     # Direction constants — used for arrow rendering and attack hitbox placement
@@ -48,6 +55,17 @@ class Player:
         self.attack_timer: int    = 0        # frames remaining in the active swing
         self.attack_cooldown_timer: int = 0  # frames until next attack is allowed
         self.invincibility_timer: int   = 0  # frames of post-hit invincibility
+
+        # --- XP & leveling ---
+        self.level: int               = 1
+        self.xp: int                  = 0
+        self.xp_to_next_level: int    = PLAYER_BASE_XP_PER_LEVEL
+        self.attack_damage: int       = PLAYER_ATTACK_DAMAGE   # grows with level
+        self.level_up_flash_timer: int = 0
+
+        # --- Knockback ---
+        self.knockback_vx: float = 0.0
+        self.knockback_vy: float = 0.0
 
     # ------------------------------------------------------------------ #
     #  Properties                                                          #
@@ -94,10 +112,13 @@ class Player:
     #  Combat API                                                          #
     # ------------------------------------------------------------------ #
 
-    def update_timers(self):
+    def update_timers(self, tilemap):
         """
-        Decrement all frame-countdown timers.  Must be called once per frame
-        (either directly from the game loop or from handle_input).
+        Decrement all frame-countdown timers and apply knockback movement.
+        Must be called once per frame (via handle_input).
+
+        Args:
+            tilemap: TileMap instance for knockback wall collision.
         """
         if self.attack_timer > 0:
             self.attack_timer -= 1
@@ -110,6 +131,24 @@ class Player:
         if self.invincibility_timer > 0:
             self.invincibility_timer -= 1
 
+        if self.level_up_flash_timer > 0:
+            self.level_up_flash_timer -= 1
+
+        # --- Apply knockback ---
+        if abs(self.knockback_vx) > 0.5 or abs(self.knockback_vy) > 0.5:
+            new_x = self._x + self.knockback_vx
+            if self._corners_clear(new_x, self._y, tilemap):
+                self._x = new_x
+            else:
+                self.knockback_vx = 0.0
+            new_y = self._y + self.knockback_vy
+            if self._corners_clear(self._x, new_y, tilemap):
+                self._y = new_y
+            else:
+                self.knockback_vy = 0.0
+            self.knockback_vx *= PLAYER_KNOCKBACK_FRICTION
+            self.knockback_vy *= PLAYER_KNOCKBACK_FRICTION
+
     def try_attack(self):
         """
         Begin an attack swing if the cooldown has expired.
@@ -119,7 +158,6 @@ class Player:
             self.is_attacking          = True
             self.attack_timer          = PLAYER_ATTACK_DURATION
             self.attack_cooldown_timer = PLAYER_ATTACK_COOLDOWN
-            # Play swing SFX (lazy import avoids circular dependency at module load)
             try:
                 import sounds
                 sounds.play_swing()
@@ -151,12 +189,46 @@ class Player:
         if self.invincibility_timer == 0:
             self.hp = max(0, self.hp - amount)
             self.invincibility_timer = PLAYER_INVINCIBILITY_FRAMES
-            # Play hurt SFX (lazy import avoids circular dependency at module load)
             try:
                 import sounds
                 sounds.play_hit_player()
             except Exception:
                 pass
+
+    def apply_knockback(self, from_x: float, from_y: float):
+        """Apply knockback away from (from_x, from_y)."""
+        dx = self.rect.centerx - from_x
+        dy = self.rect.centery - from_y
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            dx, dy = 0.0, 1.0
+            dist = 1.0
+        self.knockback_vx = (dx / dist) * PLAYER_KNOCKBACK_FORCE
+        self.knockback_vy = (dy / dist) * PLAYER_KNOCKBACK_FORCE
+
+    def add_xp(self, amount: int):
+        """Add XP and level up if threshold crossed (may chain-level)."""
+        self.xp += amount
+        while self.xp >= self.xp_to_next_level:
+            self.xp -= self.xp_to_next_level
+            self._level_up()
+
+    def _level_up(self):
+        """Apply stat increases for reaching the next level."""
+        self.level += 1
+        bonus_hp = PLAYER_HP_PER_LEVEL
+        self.max_hp += bonus_hp
+        self.hp = min(self.hp + bonus_hp, self.max_hp)
+        self.attack_damage += PLAYER_ATTACK_PER_LEVEL
+        self.xp_to_next_level = int(
+            PLAYER_BASE_XP_PER_LEVEL * (PLAYER_XP_SCALE ** (self.level - 1))
+        )
+        self.level_up_flash_timer = LEVEL_UP_FLASH_DURATION
+        try:
+            import sounds
+            sounds.play_level_up()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ #
     #  Public API                                                          #
@@ -167,12 +239,9 @@ class Player:
         Read WASD / arrow keys and move the player if the destination is clear.
         Space / F triggers an attack.
 
-        Horizontal movement takes priority over vertical.  Each axis is tested
-        independently so the player can slide along walls smoothly.
-
-        Also ticks timers — call once per frame.
+        Also ticks timers and applies knockback — call once per frame.
         """
-        self.update_timers()
+        self.update_timers(tilemap)
 
         dx = 0
         dy = 0
@@ -209,26 +278,19 @@ class Player:
             if self._corners_clear(self._x, new_y, tilemap):
                 self._y = new_y
 
-        # Attack input — handled here so it's available from held-key checks;
-        # single-press attacks via K_SPACE/K_f events in main.py take priority,
-        # but try_attack() is idempotent (no double-trigger while on cooldown).
         if keys[pygame.K_SPACE] or keys[pygame.K_f]:
             self.try_attack()
 
     def draw(self, surface: pygame.Surface, camera):
         """
-        Draw the player rectangle and a small directional arrow.
-
-        Phase 2 additions:
-        - Invincibility flash: skip drawing every other 3-frame block.
-        - Attack hitbox: semi-transparent yellow rect while is_attacking.
+        Draw the player rectangle, directional arrow, attack hitbox,
+        and level-up glow ring.
 
         Args:
             surface: The pygame surface to draw onto.
             camera:  Camera instance — used to convert world → screen coords.
         """
         # --- Invincibility flash ---
-        # While invincible, alternate visible/invisible every 3 frames.
         if self.invincibility_timer > 0 and self.invincibility_timer % 6 < 3:
             return  # skip drawing this frame (flash effect)
 
@@ -238,8 +300,6 @@ class Player:
         if self.is_attacking:
             atk_world_rect  = self.get_attack_rect()
             atk_screen_rect = camera.apply(atk_world_rect)
-
-            # Use a temporary surface so we can draw semi-transparently
             atk_surf = pygame.Surface(
                 (atk_screen_rect.width, atk_screen_rect.height),
                 pygame.SRCALPHA,
@@ -250,8 +310,16 @@ class Player:
         # Main body
         pygame.draw.rect(surface, PLAYER_COLOR, screen_rect)
 
-        # Directional arrow (small filled triangle on the leading face)
+        # Directional arrow
         self._draw_arrow(surface, screen_rect)
+
+        # --- Level-up glow ring ---
+        if self.level_up_flash_timer > 0:
+            glow_rect = screen_rect.inflate(8, 8)
+            alpha = min(255, self.level_up_flash_timer * 4)
+            glow_surf = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surf, (*HUD_LEVEL_UP_COLOR, alpha), glow_surf.get_rect(), 3)
+            surface.blit(glow_surf, (glow_rect.x, glow_rect.y))
 
     def _draw_arrow(self, surface: pygame.Surface, screen_rect: pygame.Rect):
         """Draw a small solid triangle indicating the player's facing direction."""

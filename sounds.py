@@ -29,6 +29,7 @@ _hit_enemy     = None
 _hit_player    = None
 _potion        = None
 _dialogue      = None
+_level_up_sound = None
 _town_drone    = None
 _dungeon_drone = None
 _music_channel = None   # pygame.mixer.Channel reserved for ambient music
@@ -91,7 +92,7 @@ def init() -> None:
     Safe to call even if numpy is unavailable — does nothing in that case.
     """
     global _swing, _hit_enemy, _hit_player, _potion, _dialogue
-    global _town_drone, _dungeon_drone, _music_channel
+    global _level_up_sound, _town_drone, _dungeon_drone, _music_channel
 
     if not _NUMPY_OK:
         return
@@ -163,6 +164,24 @@ def init() -> None:
         _dialogue.set_volume(_SFX_VOL)
     except Exception:
         pass
+
+    # ---- level_up — 0.4 s ascending arpeggio: C5(523)+E5(659)+G5(784) ----
+    try:
+        n = int(sr * 0.4)
+        t = np.linspace(0, 0.4, n, endpoint=False, dtype=np.float32)
+        n3 = n // 3
+        wave = np.zeros(n, dtype=np.float32)
+        for i, freq in enumerate([523.0, 659.0, 784.0]):
+            start = i * n3
+            end   = min(start + n3, n)
+            seg_t = t[start:end] - t[start]
+            env   = np.exp(-seg_t * 12.0).astype(np.float32)
+            wave[start:end] += np.sin(2.0 * np.pi * freq * seg_t).astype(np.float32) * env
+        wave = (np.clip(wave, -1.0, 1.0) * _SFX_VOL * 32767).astype(np.int16)
+        _level_up_sound = _to_sound(wave)
+        _level_up_sound.set_volume(_SFX_VOL)
+    except Exception:
+        _level_up_sound = None
 
     # ---- town drone — 2 s loop, 110 Hz + 220 Hz gentle blend -----------
     try:
@@ -245,6 +264,15 @@ def play_dialogue() -> None:
     if _dialogue:
         try:
             _dialogue.play()
+        except Exception:
+            pass
+
+
+def play_level_up() -> None:
+    """Ascending arpeggio chime on player level-up."""
+    if _level_up_sound:
+        try:
+            _level_up_sound.play()
         except Exception:
             pass
 
