@@ -25,11 +25,15 @@ def resolve_combat(player, enemies, quest=None, current_map_id=None):
         py = player.rect.centery
         for enemy in enemies:
             if attack_rect.colliderect(enemy.rect):
-                enemy.take_damage(player.attack_damage)
-                # Knockback: push enemy away from player centre
-                enemy.apply_knockback(px, py)
-                if enemy.is_dead and enemy not in newly_dead:
-                    newly_dead.append(enemy)
+                # Only damage each enemy once per swing
+                enemy_id = id(enemy)
+                if enemy_id not in player._hit_this_swing:
+                    player._hit_this_swing.add(enemy_id)
+                    enemy.take_damage(player.attack_damage)
+                    # Knockback: push enemy away from player centre
+                    enemy.apply_knockback(px, py)
+                    if enemy.is_dead and enemy not in newly_dead:
+                        newly_dead.append(enemy)
 
     # --- Grant XP and notify quest for newly dead enemies ---
     for dead_enemy in newly_dead:
@@ -40,7 +44,7 @@ def resolve_combat(player, enemies, quest=None, current_map_id=None):
 
     # --- Enemies attacking player ---
     for enemy in enemies:
-        if enemy.can_attack_player(player.rect):
+        if not enemy.is_dead and enemy.can_attack_player(player.rect):
             enemy.do_attack()
             player.take_damage(enemy.damage)
             # Knockback: push player away from enemy centre

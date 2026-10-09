@@ -4,21 +4,13 @@ import pygame
 from settings import (
     HUD_HP_BAR_COLOR, HUD_HP_BAR_BG_COLOR, HUD_HP_TEXT_COLOR, WHITE,
     HUD_XP_BAR_COLOR, HUD_XP_BAR_BG_COLOR, HUD_LEVEL_UP_COLOR,
+    HUD_X, HUD_Y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT,
+    HUD_LABEL_GAP, HUD_XP_HEIGHT, HUD_XP_GAP, HUD_QUEST_GAP,
 )
 
 # --- Module-level font cache ---
 _font: pygame.font.Font | None      = None
 _font_small: pygame.font.Font | None = None
-
-# HUD layout constants
-_HUD_X       = 12    # left edge of the level label
-_HUD_Y       = 12    # top edge of the HP row
-_BAR_WIDTH   = 150   # pixel width of the health bar (and XP bar)
-_BAR_HEIGHT  = 18    # pixel height of the health bar
-_LABEL_GAP   = 6     # gap between label and the bar
-_XP_HEIGHT   = 8     # pixel height of the XP bar
-_XP_GAP      = 4     # gap between HP bar bottom and XP bar top
-_QUEST_GAP   = 6     # gap between XP bar and quest text
 
 
 def _get_fonts():
@@ -45,22 +37,22 @@ def draw_hud(surface: pygame.Surface, player, quest=None) -> None:
 
     # --- "Lv.X" label ---
     label_surf = font.render(f"Lv.{player.level}", True, HUD_HP_TEXT_COLOR)
-    label_rect = label_surf.get_rect(midleft=(_HUD_X, _HUD_Y + _BAR_HEIGHT // 2))
+    label_rect = label_surf.get_rect(midleft=(HUD_X, HUD_Y + HUD_BAR_HEIGHT // 2))
     surface.blit(label_surf, label_rect)
 
     # Bar starts to the right of the label
-    bar_x = label_rect.right + _LABEL_GAP
-    bar_y = _HUD_Y
+    bar_x = label_rect.right + HUD_LABEL_GAP
+    bar_y = HUD_Y
 
     # --- HP bar background ---
-    bg_rect = pygame.Rect(bar_x, bar_y, _BAR_WIDTH, _BAR_HEIGHT)
+    bg_rect = pygame.Rect(bar_x, bar_y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT)
     pygame.draw.rect(surface, HUD_HP_BAR_BG_COLOR, bg_rect)
 
     # --- HP fill ---
     hp_ratio = player.hp / player.max_hp if player.max_hp > 0 else 0.0
-    fill_w   = max(0, int(_BAR_WIDTH * hp_ratio))
+    fill_w   = max(0, int(HUD_BAR_WIDTH * hp_ratio))
     if fill_w > 0:
-        fill_rect = pygame.Rect(bar_x, bar_y, fill_w, _BAR_HEIGHT)
+        fill_rect = pygame.Rect(bar_x, bar_y, fill_w, HUD_BAR_HEIGHT)
         pygame.draw.rect(surface, HUD_HP_BAR_COLOR, fill_rect)
 
     # --- 1px border ---
@@ -73,14 +65,14 @@ def draw_hud(surface: pygame.Surface, player, quest=None) -> None:
     surface.blit(text_surf, text_rect)
 
     # --- XP bar ---
-    xp_y = bar_y + _BAR_HEIGHT + _XP_GAP
-    xp_bg_rect = pygame.Rect(bar_x, xp_y, _BAR_WIDTH, _XP_HEIGHT)
+    xp_y = bar_y + HUD_BAR_HEIGHT + HUD_XP_GAP
+    xp_bg_rect = pygame.Rect(bar_x, xp_y, HUD_BAR_WIDTH, HUD_XP_HEIGHT)
     pygame.draw.rect(surface, HUD_XP_BAR_BG_COLOR, xp_bg_rect)
 
     xp_ratio = player.xp / player.xp_to_next_level if player.xp_to_next_level > 0 else 0.0
-    xp_fill_w = max(0, int(_BAR_WIDTH * xp_ratio))
+    xp_fill_w = max(0, int(HUD_BAR_WIDTH * xp_ratio))
     if xp_fill_w > 0:
-        xp_fill_rect = pygame.Rect(bar_x, xp_y, xp_fill_w, _XP_HEIGHT)
+        xp_fill_rect = pygame.Rect(bar_x, xp_y, xp_fill_w, HUD_XP_HEIGHT)
         pygame.draw.rect(surface, HUD_XP_BAR_COLOR, xp_fill_rect)
 
     pygame.draw.rect(surface, WHITE, xp_bg_rect, 1)
@@ -89,7 +81,7 @@ def draw_hud(surface: pygame.Surface, player, quest=None) -> None:
     if quest is not None:
         desc = quest.description
         if desc:
-            quest_y = xp_y + _XP_HEIGHT + _QUEST_GAP
+            quest_y = xp_y + HUD_XP_HEIGHT + HUD_QUEST_GAP
             color   = HUD_LEVEL_UP_COLOR if quest.is_complete else WHITE
             q_surf  = font_small.render(desc, True, color)
-            surface.blit(q_surf, (_HUD_X, quest_y))
+            surface.blit(q_surf, (HUD_X, quest_y))

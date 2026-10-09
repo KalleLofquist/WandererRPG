@@ -5,12 +5,12 @@ from settings import (
     TILE_SIZE, SCREEN_WIDTH, SCREEN_HEIGHT,
     WALL_COLOR, FLOOR_COLOR,
     DUNGEON_WALL_COLOR, DUNGEON_FLOOR_COLOR,
-    TILE_EXIT,
+    TILE_FLOOR, TILE_WALL, TILE_EXIT,
 )
 
-# ---- Tile type constants -----------------------------------------------
-TILE_FLOOR = 0
-TILE_WALL  = 1
+# ---- Tile type constants (imported from settings above) ------
+# TILE_FLOOR = 0  (imported from settings)
+# TILE_WALL  = 1  (imported from settings)
 # TILE_EXIT  = 2  (imported from settings, re-exported below for convenience)
 
 # ---- Active theme colors (module-level, changed by set_*_theme()) ------

@@ -106,7 +106,7 @@ def init() -> None:
         freq = 400.0 - (200.0 / 0.12) * t          # linear sweep
         phase = 2.0 * np.pi * np.cumsum(freq) / sr
         env  = np.linspace(1.0, 0.0, n, dtype=np.float32)
-        wave = (np.sin(phase).astype(np.float32) * env * _SFX_VOL * 32767).astype(np.int16)
+        wave = (np.sin(phase).astype(np.float32) * env * 32767).astype(np.int16)
         _swing = _to_sound(wave)
         _swing.set_volume(_SFX_VOL)
     except Exception:
@@ -120,7 +120,7 @@ def init() -> None:
         decay = np.exp(-t * 35.0).astype(np.float32)
         noise = (rng.random(n).astype(np.float32) * 2.0 - 1.0) * 0.35
         wave  = (np.sin(2.0 * np.pi * 120.0 * t).astype(np.float32) + noise) * decay
-        wave  = (np.clip(wave, -1.0, 1.0) * _SFX_VOL * 32767).astype(np.int16)
+        wave  = (np.clip(wave, -1.0, 1.0) * 32767).astype(np.int16)
         _hit_enemy = _to_sound(wave)
         _hit_enemy.set_volume(_SFX_VOL)
     except Exception:
@@ -145,7 +145,7 @@ def init() -> None:
         wave = ((np.sin(2.0 * np.pi * 523.0 * t) +
                  np.sin(2.0 * np.pi * 659.0 * t)).astype(np.float32)
                 * env * 0.5)
-        wave = (np.clip(wave, -1.0, 1.0) * _SFX_VOL * 32767).astype(np.int16)
+        wave = (np.clip(wave, -1.0, 1.0) * 32767).astype(np.int16)
         _potion = _to_sound(wave)
         _potion.set_volume(_SFX_VOL)
     except Exception:
@@ -159,7 +159,7 @@ def init() -> None:
               + 0.33 * np.sin(2.0 * np.pi * 1320.0 * t)
               + 0.20 * np.sin(2.0 * np.pi * 2200.0 * t)).astype(np.float32)
         env  = np.linspace(1.0, 0.0, n, dtype=np.float32)
-        wave = (np.clip(wave * env, -1.0, 1.0) * _SFX_VOL * 32767).astype(np.int16)
+        wave = (np.clip(wave * env, -1.0, 1.0) * 32767).astype(np.int16)
         _dialogue = _to_sound(wave)
         _dialogue.set_volume(_SFX_VOL)
     except Exception:
@@ -177,7 +177,7 @@ def init() -> None:
             seg_t = t[start:end] - t[start]
             env   = np.exp(-seg_t * 12.0).astype(np.float32)
             wave[start:end] += np.sin(2.0 * np.pi * freq * seg_t).astype(np.float32) * env
-        wave = (np.clip(wave, -1.0, 1.0) * _SFX_VOL * 32767).astype(np.int16)
+        wave = (np.clip(wave, -1.0, 1.0) * 32767).astype(np.int16)
         _level_up_sound = _to_sound(wave)
         _level_up_sound.set_volume(_SFX_VOL)
     except Exception:
@@ -192,7 +192,7 @@ def init() -> None:
         # Gentle amplitude modulation at 0.5 Hz for warmth
         wave *= (1.0 + 0.08 * np.sin(2.0 * np.pi * 0.5 * t))
         wave  = np.clip(wave, -1.0, 1.0)
-        wave  = (wave * _MUSIC_VOL * 32767).astype(np.int16)
+        wave  = (wave * 32767).astype(np.int16)
         _town_drone = _to_sound(wave)
         _town_drone.set_volume(_MUSIC_VOL)
     except Exception:
@@ -207,7 +207,7 @@ def init() -> None:
         # Slightly ominous 0.3 Hz modulation
         wave *= (1.0 + 0.12 * np.sin(2.0 * np.pi * 0.3 * t))
         wave  = np.clip(wave, -1.0, 1.0)
-        wave  = (wave * _MUSIC_VOL * 32767).astype(np.int16)
+        wave  = (wave * 32767).astype(np.int16)
         _dungeon_drone = _to_sound(wave)
         _dungeon_drone.set_volume(_MUSIC_VOL)
     except Exception:

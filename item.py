@@ -3,12 +3,11 @@
 import math
 import pygame
 from settings import (
-    TILE_SIZE,
+    TILE_SIZE, ITEM_SIZE,
     POTION_COLOR, POTION_HEAL_AMOUNT, POTION_PULSE_FRAMES,
 )
 
-# Items are rendered as 16×16 squares (smaller than the player)
-_ITEM_SIZE = 16
+# Items are rendered as ITEM_SIZE × ITEM_SIZE squares (smaller than the player)
 
 
 class Item:
@@ -28,13 +27,13 @@ class Item:
             tile_row: Tile row of the item.
         """
         # Centre the item within its tile
-        self._x = tile_col * TILE_SIZE + (TILE_SIZE - _ITEM_SIZE) // 2
-        self._y = tile_row * TILE_SIZE + (TILE_SIZE - _ITEM_SIZE) // 2
+        self._x = tile_col * TILE_SIZE + (TILE_SIZE - ITEM_SIZE) // 2
+        self._y = tile_row * TILE_SIZE + (TILE_SIZE - ITEM_SIZE) // 2
 
     @property
     def rect(self) -> pygame.Rect:
         """World-space bounding box for pickup collision detection."""
-        return pygame.Rect(int(self._x), int(self._y), _ITEM_SIZE, _ITEM_SIZE)
+        return pygame.Rect(int(self._x), int(self._y), ITEM_SIZE, ITEM_SIZE)
 
     def draw(self, surface: pygame.Surface, camera, frame_counter: int) -> None:
         """Override in subclasses."""
@@ -83,17 +82,17 @@ class HealthPotion(Item):
         """
         Heal the player by up to POTION_HEAL_AMOUNT (capped at max HP).
 
-        Returns True (item is consumed on pickup).
+        Returns True only if healing occurs (Option A: potion stays on ground if at full HP).
         """
         heal = min(POTION_HEAL_AMOUNT, player.max_hp - player.hp)
         if heal > 0:
             player.hp += heal
-
-        # Play potion chime (lazy import avoids circular dependency)
-        try:
-            import sounds
-            sounds.play_potion()
-        except Exception:
-            pass
-
-        return True   # always remove after pickup
+            # Play potion chime (lazy import avoids circular dependency)
+            try:
+                import sounds
+                sounds.play_potion()
+            except Exception:
+                pass
+            return True   # consumed on successful heal
+        
+        return False  # no heal, potion stays on ground

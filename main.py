@@ -27,8 +27,31 @@ from item    import HealthPotion
 from quest   import DungeonClearQuest
 
 
+# ---- Game-over screen cache (module-level, initialized after pygame.init()) ----
+_game_over_overlay = None
+_game_over_font_big = None
+_game_over_font_small = None
+_game_over_title_surf = None
+_game_over_hint_surf = None
+
+
+def _init_game_over_assets():
+    """Initialize game-over screen surfaces and fonts (call once after pygame.init())."""
+    global _game_over_overlay, _game_over_font_big, _game_over_font_small
+    global _game_over_title_surf, _game_over_hint_surf
+    
+    _game_over_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+    _game_over_overlay.fill((80, 0, 0, 180))
+    
+    _game_over_font_big = pygame.font.SysFont('arial', 64, bold=True)
+    _game_over_font_small = pygame.font.SysFont('arial', 24)
+    
+    _game_over_title_surf = _game_over_font_big.render('YOU DIED', True, (220, 50, 50))
+    _game_over_hint_surf = _game_over_font_small.render('[ R ] Restart   |   [ ESC ] Quit', True, (200, 200, 200))
+
+
 # ------------------------------------------------------------------ #
-#  Helpers                                                             #
+#  Helpers                                                           #
 # ------------------------------------------------------------------ #
 
 def _item_from_spawn(tile_col: int, tile_row: int, item_type: str):
@@ -180,6 +203,7 @@ def main():
     pygame.mixer.pre_init(44100, -16, 1, 512)
     pygame.init()
     sounds.init()   # generate all procedural audio assets
+    _init_game_over_assets()  # initialize game-over screen cache
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     clock  = pygame.time.Clock()
@@ -285,44 +309,44 @@ def main():
             # Player death → game over
             if player.is_dead:
                 game_state = GAME_STATE_GAME_OVER
-
-            # ---- Map transition check --------------------------------
-            if transition_cooldown > 0:
-                transition_cooldown -= 1
             else:
-                centre_col = player.rect.centerx // TILE_SIZE
-                centre_row = player.rect.centery // TILE_SIZE
-                triggered_exit = None
-                for ex in exit_tiles:
-                    if ex['col'] == centre_col and ex['row'] == centre_row:
-                        triggered_exit = ex
-                        break
+                # ---- Map transition check --------------------------------
+                if transition_cooldown > 0:
+                    transition_cooldown -= 1
+                else:
+                    centre_col = player.rect.centerx // TILE_SIZE
+                    centre_row = player.rect.centery // TILE_SIZE
+                    triggered_exit = None
+                    for ex in exit_tiles:
+                        if ex['col'] == centre_col and ex['row'] == centre_row:
+                            triggered_exit = ex
+                            break
 
-                if triggered_exit is not None:
-                    # 1. Render last frame of old map and fade to black
-                    _render_world(screen, tilemap, items, enemies, npcs,
-                                  player, camera, player, frame_counter, quest=quest)
-                    pygame.display.flip()
-                    do_fade(screen, clock, fade_in=False, duration_frames=30)
+                    if triggered_exit is not None:
+                        # 1. Render last frame of old map and fade to black
+                        _render_world(screen, tilemap, items, enemies, npcs,
+                                      player, camera, player, frame_counter, quest=quest)
+                        pygame.display.flip()
+                        do_fade(screen, clock, fade_in=False, duration_frames=30)
 
-                    # 2. Load new map (repositions player, switches music)
-                    current_map_id = triggered_exit['target']
-                    tilemap, enemies, npcs, items, camera, exit_tiles = \
-                        load_map(current_map_id, player)
-                    camera.update(player.rect)
+                        # 2. Load new map (repositions player, switches music)
+                        current_map_id = triggered_exit['target']
+                        tilemap, enemies, npcs, items, camera, exit_tiles = \
+                            load_map(current_map_id, player)
+                        camera.update(player.rect)
 
-                    # Re-wire quest to Elder NPC on every map load
-                    _wire_quest(npcs, quest)
+                        # Re-wire quest to Elder NPC on every map load
+                        _wire_quest(npcs, quest)
 
-                    # 3. Render first frame of new map so fade_in has something to reveal
-                    _render_world(screen, tilemap, items, enemies, npcs,
-                                  player, camera, player, frame_counter, quest=quest)
-                    pygame.display.flip()
+                        # 3. Render first frame of new map so fade_in has something to reveal
+                        _render_world(screen, tilemap, items, enemies, npcs,
+                                      player, camera, player, frame_counter, quest=quest)
+                        pygame.display.flip()
 
-                    # 4. Fade from black to the new map
-                    do_fade(screen, clock, fade_in=True, duration_frames=30)
+                        # 4. Fade from black to the new map
+                        do_fade(screen, clock, fade_in=True, duration_frames=30)
 
-                    transition_cooldown = 90   # ~1.5 s at 60 FPS
+                        transition_cooldown = 90   # ~1.5 s at 60 FPS
 
         # ---- Draw ---------------------------------------------------
         _render_world(screen, tilemap, items, enemies, npcs,
@@ -336,18 +360,11 @@ def main():
 
         # ---- Game Over overlay (drawn over everything) ---------------
         if game_state == GAME_STATE_GAME_OVER:
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((80, 0, 0, 180))
-            screen.blit(overlay, (0, 0))
-
-            font_big   = pygame.font.SysFont('arial', 64, bold=True)
-            font_small = pygame.font.SysFont('arial', 24)
-
-            title = font_big.render('YOU DIED', True, (220, 50, 50))
-            hint  = font_small.render('[ R ] Restart   |   [ ESC ] Quit', True, (200, 200, 200))
-
-            screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
-            screen.blit(hint,  hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40)))
+            screen.blit(_game_over_overlay, (0, 0))
+            screen.blit(_game_over_title_surf, 
+                       _game_over_title_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+            screen.blit(_game_over_hint_surf,  
+                       _game_over_hint_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40)))
 
         pygame.display.flip()
 

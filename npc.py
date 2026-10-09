@@ -5,21 +5,27 @@ import pygame
 from settings import (
     TILE_SIZE, PLAYER_SIZE,
     NPC_COLOR, NPC_INDICATOR_COLOR, NPC_INTERACT_RADIUS,
+    NPC_PANEL_WIDTH, NPC_PANEL_HEIGHT, NPC_PANEL_PADDING,
     SCREEN_WIDTH, SCREEN_HEIGHT,
     DIALOGUE_BG_COLOR, DIALOGUE_TEXT_COLOR, DIALOGUE_BORDER_COLOR,
 )
+from quest import STATE_INACTIVE, STATE_ACTIVE, STATE_COMPLETE, STATE_REWARDED
 
 # ---- Module-level font cache (created lazily on first use) ------------
 _font_name = None   # size-18 for NPC name
 _font_body = None   # size-16 for dialogue lines
 _font_hint = None   # size-14 for the hint text
+_npc_indicator_surf = None
+_npc_border_color = tuple(max(0, c - 40) for c in NPC_COLOR)
 
 def _get_fonts():
-    global _font_name, _font_body, _font_hint
+    global _font_name, _font_body, _font_hint, _npc_indicator_surf
     if _font_name is None:
         _font_name = pygame.font.SysFont('arial', 18, bold=True)
         _font_body = pygame.font.SysFont('arial', 16)
         _font_hint = pygame.font.SysFont('arial', 14)
+        # Render the indicator "!" once and cache it
+        _npc_indicator_surf = _font_name.render('!', True, NPC_INDICATOR_COLOR)
     return _font_name, _font_body, _font_hint
 
 
@@ -44,10 +50,13 @@ def _wrap_text(text: str, font: pygame.font.Font, max_width: int) -> list:
 
 
 # ---- Dialogue panel layout constants -----------------------------------
-_PANEL_HEIGHT  = 130
+_PANEL_HEIGHT  = NPC_PANEL_HEIGHT
 _PANEL_Y       = SCREEN_HEIGHT - _PANEL_HEIGHT - 10
-_PANEL_PADDING = 12
-_PANEL_WIDTH   = SCREEN_WIDTH - _PANEL_PADDING * 2
+_PANEL_PADDING = NPC_PANEL_PADDING
+_PANEL_WIDTH   = NPC_PANEL_WIDTH
+
+# ---- Pre-allocated dialogue panel surface ---
+_panel_surf = pygame.Surface((_PANEL_WIDTH, _PANEL_HEIGHT), pygame.SRCALPHA)
 
 
 class NPC:
@@ -104,23 +113,23 @@ class NPC:
     def _get_dynamic_lines(self) -> list:
         """Return the appropriate dialogue list based on current quest state."""
         q = getattr(self, '_quest', None)
-        if q is None or q.state == 'inactive':
+        if q is None or q.state == STATE_INACTIVE:
             return [
                 "Welcome, wanderer. These lands grow dangerous.",
                 "Dark creatures stir beneath the old keep to the south.",
                 "Slay 4 of the beasts and return to me. I shall reward your bravery.",
             ]
-        elif q.state == 'active':
+        elif q.state == STATE_ACTIVE:
             return [
                 f"How goes the hunt? You have slain {q.kills_current} of {q.kills_needed}.",
                 "The entrance is through the southern passage. Stay sharp.",
             ]
-        elif q.state == 'complete':
+        elif q.state == STATE_COMPLETE:
             return [
                 "You've done it! The dungeon is cleared of its foul inhabitants.",
                 "Take this reward — you have earned it.",
             ]
-        elif q.state == 'rewarded':
+        elif q.state == STATE_REWARDED:
             return [
                 "Well done, wanderer. The keep is safer for your courage.",
                 "Rest here a while if you need. You are always welcome.",
@@ -154,12 +163,11 @@ class NPC:
         except Exception:
             pass
 
-        # Rebuild lines based on current quest state each time interact is called
-        self._dialogue_lines = self._get_dynamic_lines()
-
         q = getattr(self, '_quest', None)
 
         if not self.is_talking:
+            # Opening conversation: rebuild lines based on current quest state
+            self._dialogue_lines = self._get_dynamic_lines()
             self.is_talking  = True
             self._line_index = 0
         else:
@@ -168,10 +176,10 @@ class NPC:
                 self._line_index = 0
                 self.is_talking  = False
                 # Accept quest when closing the first (inactive) conversation
-                if q is not None and q.state == 'inactive':
+                if q is not None and q.state == STATE_INACTIVE:
                     q.accept()
                 # Collect reward when closing the 'complete' conversation
-                elif q is not None and q.state == 'complete' and player is not None:
+                elif q is not None and q.state == STATE_COMPLETE and player is not None:
                     q.collect_reward(player)
 
     def close_dialogue(self) -> None:
@@ -194,16 +202,14 @@ class NPC:
         pygame.draw.rect(surface, NPC_COLOR, screen_rect)
 
         # Small darker outline for readability
-        border = tuple(max(0, c - 40) for c in NPC_COLOR)
-        pygame.draw.rect(surface, border, screen_rect, 1)
+        pygame.draw.rect(surface, _npc_border_color, screen_rect, 1)
 
         # Floating "!" indicator when player is close
         if self._show_indicator:
-            fn, _, _ = _get_fonts()
-            indicator_surf = fn.render('!', True, NPC_INDICATOR_COLOR)
-            ix = screen_rect.centerx - indicator_surf.get_width() // 2
-            iy = screen_rect.top - indicator_surf.get_height() - 4
-            surface.blit(indicator_surf, (ix, iy))
+            _get_fonts()  # ensure fonts and indicator are initialized
+            ix = screen_rect.centerx - _npc_indicator_surf.get_width() // 2
+            iy = screen_rect.top - _npc_indicator_surf.get_height() - 4
+            surface.blit(_npc_indicator_surf, (ix, iy))
 
     def draw_dialogue(self, surface: pygame.Surface) -> None:
         """
@@ -230,10 +236,9 @@ class NPC:
             _PANEL_WIDTH,   _PANEL_HEIGHT,
         )
 
-        # Draw on a temporary SRCALPHA surface so the fill is translucent
-        panel_surf = pygame.Surface((_PANEL_WIDTH, _PANEL_HEIGHT), pygame.SRCALPHA)
-        panel_surf.fill(DIALOGUE_BG_COLOR)        # RGBA — uses the alpha channel
-        surface.blit(panel_surf, (panel_rect.x, panel_rect.y))
+        # Reuse the pre-allocated surface
+        _panel_surf.fill(DIALOGUE_BG_COLOR)        # RGBA — uses the alpha channel
+        surface.blit(_panel_surf, (panel_rect.x, panel_rect.y))
 
         # Top border line
         pygame.draw.line(

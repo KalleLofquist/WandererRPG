@@ -10,10 +10,9 @@ from settings import (
     ENEMY_COLOR, ENEMY_HIT_COLOR,
     HUD_HP_BAR_BG_COLOR, WHITE,
     ENEMY_XP_VALUE, ENEMY_KNOCKBACK_FORCE, ENEMY_KNOCKBACK_FRICTION,
+    ENEMY_SIZE, ENEMY_HIT_FLASH_FRAMES, ENEMY_WAYPOINT_ARRIVE_DIST,
 )
-
-# Enemy size matches the player for consistent collision feel
-ENEMY_SIZE = PLAYER_SIZE
+from collision import corners_clear
 
 # Arrow indicator color (darker red)
 _ENEMY_ARROW_COLOR = tuple(max(0, c - 50) for c in ENEMY_COLOR)
@@ -113,18 +112,7 @@ class Enemy:
 
     def _corners_clear(self, px: float, py: float, tilemap) -> bool:
         """Return True if all four corners of the enemy bbox at (px, py) are floor."""
-        corners = [
-            (px,                       py),
-            (px + ENEMY_SIZE - 1,      py),
-            (px,                       py + ENEMY_SIZE - 1),
-            (px + ENEMY_SIZE - 1,      py + ENEMY_SIZE - 1),
-        ]
-        for cx, cy in corners:
-            tile_x = int(cx) // TILE_SIZE
-            tile_y = int(cy) // TILE_SIZE
-            if tilemap.is_wall(tile_x, tile_y):
-                return False
-        return True
+        return corners_clear(px, py, ENEMY_SIZE, tilemap)
 
     def _move_toward(self, target_x: float, target_y: float, tilemap) -> bool:
         """
@@ -225,8 +213,8 @@ class Enemy:
         dy = wp_y - self._y
         dist = math.hypot(dx, dy)
 
-        # Arrived at waypoint (within 4 px) — switch target
-        if dist < 4:
+        # Arrived at waypoint (within ENEMY_WAYPOINT_ARRIVE_DIST px) — switch target
+        if dist < ENEMY_WAYPOINT_ARRIVE_DIST:
             self._waypoint_index = 1 - self._waypoint_index
             return
 
@@ -263,7 +251,7 @@ class Enemy:
     def take_damage(self, amount: int):
         """Reduce HP (floored at 0) and trigger the white-flash effect."""
         self.hp = max(0, self.hp - amount)
-        self._hit_flash_timer = 8
+        self._hit_flash_timer = ENEMY_HIT_FLASH_FRAMES
         # Play hit SFX (lazy import avoids circular dependency at module load)
         try:
             import sounds

@@ -13,6 +13,7 @@ from settings import (
     PLAYER_KNOCKBACK_FORCE, PLAYER_KNOCKBACK_FRICTION,
     HUD_LEVEL_UP_COLOR,
 )
+from collision import corners_clear
 
 # A slightly darker shade for the directional arrow
 _ARROW_COLOR = tuple(max(0, c - 60) for c in PLAYER_COLOR)
@@ -55,6 +56,7 @@ class Player:
         self.attack_timer: int    = 0        # frames remaining in the active swing
         self.attack_cooldown_timer: int = 0  # frames until next attack is allowed
         self.invincibility_timer: int   = 0  # frames of post-hit invincibility
+        self._hit_this_swing: set = set()    # tracks enemy IDs hit during current swing
 
         # --- XP & leveling ---
         self.level: int               = 1
@@ -66,6 +68,17 @@ class Player:
         # --- Knockback ---
         self.knockback_vx: float = 0.0
         self.knockback_vy: float = 0.0
+
+        # --- Pre-allocated surfaces for rendering ---
+        self._attack_surface = pygame.Surface(
+            (PLAYER_ATTACK_RANGE, PLAYER_SIZE),
+            pygame.SRCALPHA,
+        )
+        self._attack_surface.fill(_ATTACK_HITBOX_COLOR)
+        self._glow_surface = pygame.Surface(
+            (PLAYER_SIZE + 8, PLAYER_SIZE + 8),
+            pygame.SRCALPHA,
+        )
 
     # ------------------------------------------------------------------ #
     #  Properties                                                          #
@@ -91,22 +104,8 @@ class Player:
     # ------------------------------------------------------------------ #
 
     def _corners_clear(self, px: float, py: float, tilemap) -> bool:
-        """
-        Return True if all four corners of a PLAYER_SIZE square placed at
-        (px, py) are on floor tiles.
-        """
-        corners = [
-            (px,                        py),
-            (px + PLAYER_SIZE - 1,      py),
-            (px,                        py + PLAYER_SIZE - 1),
-            (px + PLAYER_SIZE - 1,      py + PLAYER_SIZE - 1),
-        ]
-        for cx, cy in corners:
-            tile_x = int(cx) // TILE_SIZE
-            tile_y = int(cy) // TILE_SIZE
-            if tilemap.is_wall(tile_x, tile_y):
-                return False
-        return True
+        """Return True if all four corners of a PLAYER_SIZE square placed at (px, py) are on floor tiles."""
+        return corners_clear(px, py, PLAYER_SIZE, tilemap)
 
     # ------------------------------------------------------------------ #
     #  Combat API                                                          #
@@ -153,11 +152,13 @@ class Player:
         """
         Begin an attack swing if the cooldown has expired.
         Sets is_attacking = True for PLAYER_ATTACK_DURATION frames.
+        Initializes a fresh hit tracking set for this swing.
         """
         if self.attack_cooldown_timer == 0:
             self.is_attacking          = True
             self.attack_timer          = PLAYER_ATTACK_DURATION
             self.attack_cooldown_timer = PLAYER_ATTACK_COOLDOWN
+            self._hit_this_swing       = set()  # reset for new swing
             try:
                 import sounds
                 sounds.play_swing()
@@ -278,9 +279,6 @@ class Player:
             if self._corners_clear(self._x, new_y, tilemap):
                 self._y = new_y
 
-        if keys[pygame.K_SPACE] or keys[pygame.K_f]:
-            self.try_attack()
-
     def draw(self, surface: pygame.Surface, camera):
         """
         Draw the player rectangle, directional arrow, attack hitbox,
@@ -300,12 +298,8 @@ class Player:
         if self.is_attacking:
             atk_world_rect  = self.get_attack_rect()
             atk_screen_rect = camera.apply(atk_world_rect)
-            atk_surf = pygame.Surface(
-                (atk_screen_rect.width, atk_screen_rect.height),
-                pygame.SRCALPHA,
-            )
-            atk_surf.fill(_ATTACK_HITBOX_COLOR)
-            surface.blit(atk_surf, (atk_screen_rect.x, atk_screen_rect.y))
+            # Reuse pre-allocated surface and blit
+            surface.blit(self._attack_surface, (atk_screen_rect.x, atk_screen_rect.y))
 
         # Main body
         pygame.draw.rect(surface, PLAYER_COLOR, screen_rect)
@@ -317,9 +311,10 @@ class Player:
         if self.level_up_flash_timer > 0:
             glow_rect = screen_rect.inflate(8, 8)
             alpha = min(255, self.level_up_flash_timer * 4)
-            glow_surf = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surf, (*HUD_LEVEL_UP_COLOR, alpha), glow_surf.get_rect(), 3)
-            surface.blit(glow_surf, (glow_rect.x, glow_rect.y))
+            # Clear and re-draw the glow surface with current alpha
+            self._glow_surface.fill((0, 0, 0, 0))  # clear
+            pygame.draw.rect(self._glow_surface, (*HUD_LEVEL_UP_COLOR, alpha), self._glow_surface.get_rect(), 3)
+            surface.blit(self._glow_surface, (glow_rect.x, glow_rect.y))
 
     def _draw_arrow(self, surface: pygame.Surface, screen_rect: pygame.Rect):
         """Draw a small solid triangle indicating the player's facing direction."""
