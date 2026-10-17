@@ -50,34 +50,22 @@ class Enemy:
         damage: int    = None,
         xp_value: int  = None,
     ):
-        """
-        Args:
-            x, y:          World-pixel spawn position (top-left of bounding box).
-            patrol_start:  (tile_col, tile_row) of the first patrol waypoint.
-            patrol_end:    (tile_col, tile_row) of the second patrol waypoint.
-            hp:            Override max HP (defaults to ENEMY_MAX_HP).
-            speed:         Override movement speed (defaults to ENEMY_SPEED).
-            damage:        Override melee damage (defaults to ENEMY_DAMAGE).
-            xp_value:      Override XP reward on death (defaults to ENEMY_XP_VALUE).
-        """
+        # ... (existing init code) ...
         self._x: float = float(x)
         self._y: float = float(y)
         self._direction: int = self.DOWN
 
-        # Convert tile waypoints to pixel centres so we move toward a point
-        # in the middle of the tile, not its top-left corner.
+        # Convert tile waypoints to pixel centres
         self._waypoints = [
             (patrol_start[0] * TILE_SIZE + TILE_SIZE // 2 - ENEMY_SIZE // 2,
              patrol_start[1] * TILE_SIZE + TILE_SIZE // 2 - ENEMY_SIZE // 2),
             (patrol_end[0]   * TILE_SIZE + TILE_SIZE // 2 - ENEMY_SIZE // 2,
              patrol_end[1]   * TILE_SIZE + TILE_SIZE // 2 - ENEMY_SIZE // 2),
         ]
-        self._waypoint_index: int = 0   # which waypoint we're heading to
+        self._waypoint_index: int = 0
 
-        # State machine
         self.state: str = STATE_PATROL
 
-        # Stats — support per-instance overrides for dungeon / boss variants
         _hp              = hp     if hp     is not None else ENEMY_MAX_HP
         self.hp: int     = _hp
         self.max_hp: int = _hp
@@ -86,9 +74,9 @@ class Enemy:
         self.xp_value: int  = xp_value if xp_value is not None else ENEMY_XP_VALUE
 
         self.attack_cooldown_timer: int = 0
-        self._hit_flash_timer: int = 0  # counts down for the white-flash effect
+        self._hit_flash_timer: int = 0
+        self.attack_visual_timer: int = 0 # Added for visual feedback
 
-        # --- Knockback ---
         self.knockback_vx: float = 0.0
         self.knockback_vy: float = 0.0
 
@@ -171,6 +159,8 @@ class Enemy:
             self.attack_cooldown_timer -= 1
         if self._hit_flash_timer > 0:
             self._hit_flash_timer -= 1
+        if self.attack_visual_timer > 0:
+            self.attack_visual_timer -= 1
 
         # --- Apply knockback (before AI movement) ---
         if abs(self.knockback_vx) > 0.5 or abs(self.knockback_vy) > 0.5:
@@ -238,15 +228,32 @@ class Enemy:
 
     def can_attack_player(self, player_rect: pygame.Rect) -> bool:
         """
-        Return True if the enemy is in melee range and the cooldown has expired.
-        The attack check inflates the enemy's rect by ENEMY_ATTACK_RANGE on all sides.
+        Return True if the player is within the enemy's frontal attack range 
+        and the cooldown has expired.
         """
-        inflated = self.rect.inflate(ENEMY_ATTACK_RANGE * 2, ENEMY_ATTACK_RANGE * 2)
-        return inflated.colliderect(player_rect) and self.attack_cooldown_timer == 0
+        if self.attack_cooldown_timer != 0:
+            return False
+
+        # Create a directional attack rect similar to the player's
+        r = self.rect
+        reach = 20 # Reduced reach for fairness
+        thickness = ENEMY_SIZE
+
+        if self._direction == self.RIGHT:
+            atk_rect = pygame.Rect(r.right, r.top, reach, thickness)
+        elif self._direction == self.LEFT:
+            atk_rect = pygame.Rect(r.left - reach, r.top, reach, thickness)
+        elif self._direction == self.UP:
+            atk_rect = pygame.Rect(r.left, r.top - reach, thickness, reach)
+        else: # DOWN
+            atk_rect = pygame.Rect(r.left, r.bottom, thickness, reach)
+
+        return atk_rect.colliderect(player_rect)
 
     def do_attack(self):
-        """Register an attack — resets the cooldown timer."""
+        """Register an attack — resets the cooldown timer and triggers visual."""
         self.attack_cooldown_timer = ENEMY_ATTACK_COOLDOWN
+        self.attack_visual_timer = 10 # Show strike for 10 frames
 
     def take_damage(self, amount: int):
         """Reduce HP (floored at 0) and trigger the white-flash effect."""
@@ -277,6 +284,7 @@ class Enemy:
     def draw(self, surface: pygame.Surface, camera):
         """
         Draw the enemy body, optional HP bar, and facing arrow.
+        Also draws a strike visual when attacking.
 
         Args:
             surface: The pygame surface to draw onto.
@@ -287,6 +295,24 @@ class Enemy:
         # Body color — flash white when recently hit
         color = ENEMY_HIT_COLOR if self._hit_flash_timer > 0 else ENEMY_COLOR
         pygame.draw.rect(surface, color, screen_rect)
+
+        # --- Attack strike visual ---
+        if self.attack_visual_timer > 0:
+            # Draw a small red rectangle in the direction of the attack
+            reach = 20
+            thickness = ENEMY_SIZE
+            r = self.rect
+            if self._direction == self.RIGHT:
+                strike_rect = pygame.Rect(r.right, r.top, reach, thickness)
+            elif self._direction == self.LEFT:
+                strike_rect = pygame.Rect(r.left - reach, r.top, reach, thickness)
+            elif self._direction == self.UP:
+                strike_rect = pygame.Rect(r.left, r.top - reach, thickness, reach)
+            else: # DOWN
+                strike_rect = pygame.Rect(r.left, r.bottom, thickness, reach)
+            
+            strike_screen_rect = camera.apply(strike_rect)
+            pygame.draw.rect(surface, (255, 0, 0), strike_screen_rect)
 
         # HP bar — only visible when the enemy has taken damage
         if self.hp < self.max_hp:

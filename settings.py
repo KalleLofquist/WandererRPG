@@ -17,7 +17,8 @@ TILE_EXIT  = 2   # walkable, triggers map transition
 
 # --- Player ---
 PLAYER_SPEED = 3
-PLAYER_SIZE  = 28  # square side length in pixels
+PLAYER_SIZE  = 28  # visual square side length in pixels
+PLAYER_HITBOX_SIZE = 16 # actual damage area side length
 
 # --- Colors (R, G, B) ---
 WHITE       = (255, 255, 255)

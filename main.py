@@ -25,7 +25,7 @@ from maps    import build_town_map, build_dungeon_map
 from npc     import NPC
 from item    import HealthPotion
 from quest   import DungeonClearQuest
-
+from particles import ParticleManager
 
 # ---- Game-over screen cache (module-level, initialized after pygame.init()) ----
 _game_over_overlay = None
@@ -173,7 +173,7 @@ def do_fade(screen: pygame.Surface, clock: pygame.time.Clock,
 
 
 def _render_world(screen, tilemap, items, enemies, npcs, player, camera,
-                  hud_player, frame_counter, quest=None):
+                  hud_player, frame_counter, quest=None, particles=None):
     """
     Draw a single complete frame: tilemap → items → enemies → NPCs → player → HUD.
     Does NOT call pygame.display.flip().
@@ -189,6 +189,9 @@ def _render_world(screen, tilemap, items, enemies, npcs, player, camera,
 
     for npc in npcs:
         npc.draw(screen, camera)
+
+    if particles:
+        particles.draw(screen, camera)
 
     hud_player.draw(screen, camera)
     draw_hud(screen, hud_player, quest=quest)
@@ -219,6 +222,8 @@ def main():
     tilemap, enemies, npcs, items, camera, exit_tiles = load_map(current_map_id, player)
     camera.update(player.rect)   # prime the camera
     _wire_quest(npcs, quest)
+    
+    particle_manager = ParticleManager()
 
     # ---- State variables --------------------------------------------
     frame_counter       = 0
@@ -282,6 +287,8 @@ def main():
             keys = pygame.key.get_pressed()
             player.handle_input(keys, tilemap)
             camera.update(player.rect)
+            
+            particle_manager.update()
 
             # NPC proximity check (drives "!" indicator)
             for npc in npcs:
@@ -293,7 +300,7 @@ def main():
 
             # Combat — pass quest and map ID for XP/quest routing
             dead_enemies = resolve_combat(
-                player, enemies,
+                player, enemies, camera, particle_manager,
                 quest=quest, current_map_id=current_map_id,
             )
             for dead in dead_enemies:
@@ -304,6 +311,8 @@ def main():
             for item in list(items):
                 if player.rect.colliderect(item.rect):
                     if item.on_pickup(player):
+                        # Juice: Particle burst on pickup
+                        particle_manager.emit(item.rect.centerx, item.rect.centery, (60, 200, 100), 15)
                         items.remove(item)
 
             # Player death → game over
@@ -325,14 +334,14 @@ def main():
                     if triggered_exit is not None:
                         # 1. Render last frame of old map and fade to black
                         _render_world(screen, tilemap, items, enemies, npcs,
-                                      player, camera, player, frame_counter, quest=quest)
+                                       player, camera, player, frame_counter, quest=quest, particles=particle_manager)
                         pygame.display.flip()
                         do_fade(screen, clock, fade_in=False, duration_frames=30)
 
                         # 2. Load new map (repositions player, switches music)
                         current_map_id = triggered_exit['target']
                         tilemap, enemies, npcs, items, camera, exit_tiles = \
-                            load_map(current_map_id, player)
+                        load_map(current_map_id, player)
                         camera.update(player.rect)
 
                         # Re-wire quest to Elder NPC on every map load
@@ -340,17 +349,15 @@ def main():
 
                         # 3. Render first frame of new map so fade_in has something to reveal
                         _render_world(screen, tilemap, items, enemies, npcs,
-                                      player, camera, player, frame_counter, quest=quest)
+                                       player, camera, player, frame_counter, quest=quest, particles=particle_manager)
                         pygame.display.flip()
-
-                        # 4. Fade from black to the new map
                         do_fade(screen, clock, fade_in=True, duration_frames=30)
 
                         transition_cooldown = 90   # ~1.5 s at 60 FPS
 
         # ---- Draw ---------------------------------------------------
         _render_world(screen, tilemap, items, enemies, npcs,
-                      player, camera, player, frame_counter, quest=quest)
+                      player, camera, player, frame_counter, quest=quest, particles=particle_manager)
 
         # Dialogue boxes rendered on top of everything else (screen space)
         for npc in npcs:
@@ -378,7 +385,6 @@ def main():
         )
 
     pygame.quit()
-
 
 if __name__ == "__main__":
     main()

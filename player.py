@@ -86,8 +86,21 @@ class Player:
 
     @property
     def rect(self) -> pygame.Rect:
-        """Current bounding box in world-pixel space (integer)."""
+        """Current visual bounding box in world-pixel space (integer)."""
         return pygame.Rect(int(self._x), int(self._y), PLAYER_SIZE, PLAYER_SIZE)
+
+    @property
+    def hitbox(self) -> pygame.Rect:
+        """The smaller area where the player can actually take damage."""
+        from settings import PLAYER_HITBOX_SIZE
+        # Center the hitbox within the visual rect
+        margin = (PLAYER_SIZE - PLAYER_HITBOX_SIZE) // 2
+        return pygame.Rect(
+            int(self._x) + margin, 
+            int(self._y) + margin, 
+            PLAYER_HITBOX_SIZE, 
+            PLAYER_HITBOX_SIZE
+        )
 
     @property
     def facing(self) -> int:
@@ -169,10 +182,11 @@ class Player:
         """
         Return the world-space Rect of the current attack hitbox.
 
-        The hitbox is PLAYER_SIZE wide and PLAYER_ATTACK_RANGE deep,
-        placed immediately in front of the player based on facing direction.
+        The hitbox is consistent in size regardless of direction.
         """
         r = self.rect
+        # Use a consistent width/height for the hitbox
+        # We use PLAYER_ATTACK_RANGE for the 'reach' and PLAYER_SIZE for the 'thickness'
         if self._direction == self.RIGHT:
             return pygame.Rect(r.right, r.top, PLAYER_ATTACK_RANGE, PLAYER_SIZE)
         elif self._direction == self.LEFT:
@@ -298,8 +312,10 @@ class Player:
         if self.is_attacking:
             atk_world_rect  = self.get_attack_rect()
             atk_screen_rect = camera.apply(atk_world_rect)
-            # Reuse pre-allocated surface and blit
-            surface.blit(self._attack_surface, (atk_screen_rect.x, atk_screen_rect.y))
+            # Create a surface matching the actual hitbox size for the preview
+            preview_surf = pygame.Surface((atk_world_rect.width, atk_world_rect.height), pygame.SRCALPHA)
+            preview_surf.fill(_ATTACK_HITBOX_COLOR)
+            surface.blit(preview_surf, (atk_screen_rect.x, atk_screen_rect.y))
 
         # Main body
         pygame.draw.rect(surface, PLAYER_COLOR, screen_rect)
